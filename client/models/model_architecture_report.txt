@@ -1,0 +1,43 @@
+=== NEURAL NETWORK ARCHITECTURE ===
+
+FraudDetectionMLP(
+  (base_layers): Sequential(
+    (0): Linear(in_features=385, out_features=256, bias=True)
+    (1): BatchNorm1d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (2): ReLU()
+    (3): Dropout(p=0.3, inplace=False)
+    (4): Linear(in_features=256, out_features=128, bias=True)
+    (5): BatchNorm1d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (6): ReLU()
+    (7): Dropout(p=0.3, inplace=False)
+    (8): Linear(in_features=128, out_features=64, bias=True)
+    (9): BatchNorm1d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    (10): ReLU()
+    (11): Dropout(p=0.3, inplace=False)
+  )
+  (top_layers): Sequential(
+    (0): Linear(in_features=64, out_features=32, bias=True)
+    (1): ReLU()
+    (2): Linear(in_features=32, out_features=1, bias=True)
+  )
+)
+
+Total Trainable Parameters: 142,977
+
+=== VALIDATION RESULTS ===
+
+[BANK_A]
+Validation AUC-ROC: 0.8239
+Confusion Matrix: TN=7918, FP=1881, FN=64, TP=137
+
+[BANK_B]
+Validation AUC-ROC: 0.8960
+Confusion Matrix: TN=1473, FP=245, FN=65, TP=217
+
+[BANK_C]
+Validation AUC-ROC: 0.8870
+Confusion Matrix: TN=6740, FP=1282, FN=324, TP=1120
+
+[BANK_D]
+Validation AUC-ROC: 0.8710
+Confusion Matrix: TN=7154, FP=2557, FN=46, TP=243
