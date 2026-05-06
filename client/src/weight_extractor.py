@@ -11,6 +11,8 @@ def extract_base_weights(model, bank_id: str = "unknown", round_num: int = 0,
     weights = {}
     for name, param in model.state_dict().items():
         if name.startswith("base_layers"):
+            if "running" in name or "tracked" in name:
+                continue
             weights[name] = param.cpu().numpy().tolist()
         elif name.startswith("top_layers"):
             continue
