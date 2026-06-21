@@ -2,6 +2,7 @@
 
 This repository contains a Federated Learning (FL) framework designed for fraud detection across multiple bank databases. The system enables collaborative model training while maintaining data isolation and transaction privacy.
 
+
 ## System Overview
 
 The project implements an asynchronous Federated Learning pipeline utilizing a Split-Neural Network architecture. This ensures that only general feature representation layers are shared, while classification layers remain local and personalized to each financial institution.
@@ -17,6 +18,8 @@ The project implements an asynchronous Federated Learning pipeline utilizing a S
 ## Project Structure
 
 ```text
+├── frontend/               # Interactive React 18 + Vite dashboard
+│   ├── src/                # UI components and API client
 ├── client/                 # Client-side infrastructure
 │   ├── src/
 │   │   ├── model.py        # FraudDetectionMLP architecture
@@ -25,6 +28,7 @@ The project implements an asynchronous Federated Learning pipeline utilizing a S
 │   │   └── weight_extractor.py
 │   └── models/             # Local model checkpoints
 ├── server/                 # Server-side coordination
+│   ├── api.py              # FastAPI wrapper for streaming rounds to dashboard
 │   ├── src/                # Core aggregation algorithms
 │   │   ├── aggregator.py   # Master aggregation pipeline
 │   │   ├── dp_mechanism.py # Differential Privacy implementation
@@ -54,15 +58,31 @@ The project implements an asynchronous Federated Learning pipeline utilizing a S
 
 ### Environment Requirements
 *   Python 3.10 or higher
-*   PyTorch
+*   Node.js (for the frontend dashboard)
+*   PyTorch, FastAPI, Uvicorn
 *   NumPy, Pandas, Scikit-learn
 
-### Running Experiments
-Experiments are managed via the `fl_runner.py` script located in the `server/` directory.
+### Running the Interactive Dashboard (Recommended)
+You can visualize the training process, select configurations, and view differential privacy metrics live through the web dashboard.
 
-```powershell
-cd server
-python fl_runner.py --rounds 20 --method custom --local_epochs 3 --noise_multiplier 0.5
+1. **Start the FastAPI backend:**
+   From the repository root:
+   ```bash
+   uvicorn server.api:app --reload --host 0.0.0.0 --port 8000
+   ```
+2. **Start the React frontend:**
+   From a new terminal:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+### Running CLI Experiments
+Experiments can also be managed manually via the `fl_runner.py` script.
+
+```bash
+python server/fl_runner.py --rounds 20 --method custom --local_epochs 3 --noise_multiplier 0.5
 ```
 
 ### Supported Aggregation Methods

@@ -26,7 +26,7 @@ _REPO_ROOT  = os.path.abspath(os.path.join(_SERVER_DIR, ".."))  # repo root
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from src.aggregator import (
+from server.src.aggregator import (
     aggregate,
     AggregationResult,
 )

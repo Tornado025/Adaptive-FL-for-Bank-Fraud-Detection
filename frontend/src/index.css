@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Global resets & base ─────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #0d1117;
+  color: #e6edf3;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* ── Typography ───────────────────────────────────────────────────────────── */
+.font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #161b22;
+}
+::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3d4f63;
+}
+
+/* ── Splash fade ─────────────────────────────────────────────────────────── */
+@keyframes splashFadeOut {
+  0%   { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
+}
+
+.splash-fade {
+  animation: splashFadeOut 1.8s ease-in-out forwards;
+}
+
+/* ── SSE flow line animation ─────────────────────────────────────────────── */
+@keyframes flowLine {
+  0%   { stroke-dashoffset: 60; opacity: 0.2; }
+  50%  { stroke-dashoffset: 0;  opacity: 1;   }
+  100% { stroke-dashoffset: -60; opacity: 0.2; }
+}
+
+.flow-line {
+  stroke-dasharray: 20 40;
+  animation: flowLine 2.2s ease-in-out infinite;
+}
+
+/* ── Node pulse ──────────────────────────────────────────────────────────── */
+@keyframes nodePulse {
+  0%, 100% { r: 8; opacity: 0.9; }
+  50%       { r: 11; opacity: 1;  }
+}
+
+.node-pulse {
+  animation: nodePulse 2s ease-in-out infinite;
+}
+
+/* ── Metric number highlight ─────────────────────────────────────────────── */
+.metric-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Card glass effect ───────────────────────────────────────────────────── */
+.card {
+  background: #161b22;
+  border: 1px solid #1c2333;
+  border-radius: 10px;
+}
+
+.card-hover {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card-hover:hover {
+  border-color: #2d3748;
+  box-shadow: 0 0 0 1px #2d3748, 0 4px 24px rgba(0,0,0,0.4);
+}
+
+/* ── Amber glow for live states ──────────────────────────────────────────── */
+.amber-glow {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25), 0 0 4px rgba(245, 158, 11, 0.15);
+}
+
+/* ── Step connector line ─────────────────────────────────────────────────── */
+.step-connector {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, #2d3748 0%, #1c2333 100%);
+  margin: 0 8px;
+  margin-top: 20px;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────── */
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.data-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom: 1px solid #1c2333;
+}
+.data-table td {
+  padding: 10px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid #1c2333;
+  font-family: 'JetBrains Mono', monospace;
+}
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+.data-table tbody tr:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+/* ── Log panel ────────────────────────────────────────────────────────────── */
+.log-panel {
+  background: #080c12;
+  border: 1px solid #1c2333;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7ee787;
+  padding: 12px;
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+/* ── Range slider ────────────────────────────────────────────────────────── */
+input[type='range'] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #2d3748;
+  outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #f59e0b;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(245,158,11,0.5);
+  transition: box-shadow 0.2s;
+}
+input[type='range']::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 12px rgba(245,158,11,0.7);
+}

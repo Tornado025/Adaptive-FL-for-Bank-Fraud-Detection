@@ -7,11 +7,11 @@ in a controlled, reproducible experiment loop.
 
 Usage:
     # From the repo root (Adaptive-FL-for-Bank-Fraud-Detection/)
-    python fl_runner.py                                      # defaults: 10 rounds, custom
-    python fl_runner.py --rounds 5 --method fedavg          # FedAvg baseline
-    python fl_runner.py --rounds 10 --method fedprox        # FedProx only
-    python fl_runner.py --rounds 20 --method custom         # Full pipeline (default)
-    python fl_runner.py --rounds 20 --method custom --noise_multiplier 2.0  # strong DP
+    python server/fl_runner.py                                   # defaults: 10 rounds, custom
+    python server/fl_runner.py --rounds 5 --method fedavg       # FedAvg baseline
+    python server/fl_runner.py --rounds 10 --method fedprox     # FedProx only
+    python server/fl_runner.py --rounds 20 --method custom      # Full pipeline (default)
+    python server/fl_runner.py --rounds 20 --method custom --noise_multiplier 2.0  # strong DP
 
 Outputs:
     fl_results.json                  ← Round-by-round metrics + final aggregate
@@ -39,6 +39,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Generator
 
 # ── Repo root on sys.path — enables all cross-module imports ──────────────────
 REPO_ROOT = Path(__file__).parent.parent
@@ -109,31 +110,42 @@ def _print_round_diagnostics(round_num: int, diag: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Core FL loop
+# Core FL generator — yields one dict per round + final complete event
 # ---------------------------------------------------------------------------
 
 
-def run_fl(args: argparse.Namespace) -> None:
+def run_fl_gen(args: argparse.Namespace) -> Generator[dict, None, None]:
+    """
+    Generator that runs the full FL loop and yields a structured dict after
+    each round. A final dict with event='complete' is yielded after all rounds.
+
+    Both the CLI (run_fl) and the FastAPI layer (api.py) consume this generator.
+    No FL logic is duplicated between them.
+
+    Yields per round:
+        {
+          "event": "round",
+          "round": int,
+          "total_rounds": int,
+          "method": str,
+          "per_client": { bank_id: { val_auc, val_loss, effective_weight,
+                                     reliability_score, conflict_penalty,
+                                     proximal_term, dp_applied } },
+          "privacy_budget": dict | None,
+          "test_evaluation": { "aggregate": dict, "per_bank": dict }
+        }
+
+    Yields on completion:
+        {
+          "event": "complete",
+          "output": { ...full fl_results.json equivalent... }
+        }
+    """
     t_start = time.time()
 
-    print("\n" + "+" + "="*62 + "+")
-    print("|" + "  Adaptive FL for Bank Fraud Detection".center(62) + "|")
-    print("+" + "="*62 + "+")
-    print(f"  Method:         {args.method}")
-    print(f"  Rounds:         {args.rounds}")
-    print(f"  Local epochs:   {args.local_epochs}")
-    print(f"  FedProx mu:     {args.mu}")
-    if args.method in ("dp_fedavg", "custom"):
-        print(f"  DP clip_norm:   {args.clip_norm}")
-        print(f"  DP noise_mult:  {args.noise_multiplier}")
-
     # ── Initialise ──────────────────────────────────────────────────────
-    print("\n  Initialising dataloaders and model architecture...")
     feature_dim = _get_feature_dim()
-    print(f"  FEATURE_DIM = {feature_dim}")
-
     global_weights = _initialise_global_weights(feature_dim)
-    print(f"  Initialised global weights ({len(global_weights)} base-layer tensors)")
 
     dp_config = None
     if args.method in ("dp_fedavg", "custom"):
@@ -159,11 +171,12 @@ def run_fl(args: argparse.Namespace) -> None:
 
     # ── FL Round Loop ────────────────────────────────────────────────────
     round_log: list[dict] = []
+    round_report = None
 
     for round_num in range(1, args.rounds + 1):
         _print_round_header(round_num, args.rounds, args.method)
 
-        # Broadcast global weights (all clients receive the same dict)
+        # Broadcast global weights
         current_global = server.get_global_weights()
 
         # Local training at each bank
@@ -189,13 +202,13 @@ def run_fl(args: argparse.Namespace) -> None:
         result = server.aggregate_round(weight_packages, round_num=round_num)
         _print_round_diagnostics(round_num, result.round_diagnostics)
 
-        # Evaluate Global Model for this round
+        # Evaluate Global Model
         print(f"\n  [Server] Evaluating global model (round {round_num})...")
-        from evaluation.global_evaluator import evaluate_global_model
-        
+        from server.evaluation.global_evaluator import evaluate_global_model
+
         client_models = {bid: clients[bid].model for bid in BANK_IDS}
         bank_db_paths = {bid: str(DB_ROOT / f"{bid}.db") for bid in BANK_IDS}
-        
+
         round_report = evaluate_global_model(
             global_weights=server.get_global_weights(),
             model_template=client_models,
@@ -203,64 +216,59 @@ def run_fl(args: argparse.Namespace) -> None:
             method=args.method,
             num_rounds=round_num,
         )
-        
-        agg = round_report.aggregate
-        print(f"  --> Global Test Metrics: AUC={agg['weighted_auc']:.4f} | F1={agg['mean_f1']:.4f} | FNR={agg['mean_fnr']:.4f} | FPR={agg['mean_fpr']:.4f}")
 
-        # Log this round for JSON output
+        agg = round_report.aggregate
+        print(
+            f"  --> Global Test Metrics: AUC={agg['weighted_auc']:.4f} | "
+            f"F1={agg['mean_f1']:.4f} | FNR={agg['mean_fnr']:.4f} | FPR={agg['mean_fpr']:.4f}"
+        )
+
+        # Build this round's structured event dict
         from dataclasses import asdict
-        round_log.append({
-            "round":   round_num,
-            "per_client": {
-                bid: {
-                    "val_auc":          result.round_diagnostics["per_client"][bid]["val_auc"],
-                    "val_loss":         next(
-                        p["metadata"]["val_loss"]
-                        for p in weight_packages if p["bank_id"] == bid
-                    ),
-                    "effective_weight": result.round_diagnostics["per_client"][bid]["effective_weight"],
-                    "reliability_score": result.round_diagnostics["per_client"][bid]["reliability_score"],
-                    "conflict_penalty": result.round_diagnostics["per_client"][bid]["conflict_penalty"],
-                    "proximal_term":    next(
-                        p["metadata"]["proximal_term"]
-                        for p in weight_packages if p["bank_id"] == bid
-                    ),
-                }
-                for bid in BANK_IDS
-            },
+        per_client_data = {
+            bid: {
+                "val_auc":           result.round_diagnostics["per_client"][bid]["val_auc"],
+                "val_loss":          next(
+                    p["metadata"]["val_loss"]
+                    for p in weight_packages if p["bank_id"] == bid
+                ),
+                "effective_weight":  result.round_diagnostics["per_client"][bid]["effective_weight"],
+                "reliability_score": result.round_diagnostics["per_client"][bid]["reliability_score"],
+                "conflict_penalty":  result.round_diagnostics["per_client"][bid]["conflict_penalty"],
+                "proximal_term":     next(
+                    p["metadata"]["proximal_term"]
+                    for p in weight_packages if p["bank_id"] == bid
+                ),
+                "dp_applied":        result.round_diagnostics["per_client"][bid]["dp_applied"],
+            }
+            for bid in BANK_IDS
+        }
+
+        round_event = {
+            "event":          "round",
+            "round":          round_num,
+            "total_rounds":   args.rounds,
+            "method":         args.method,
+            "per_client":     per_client_data,
             "privacy_budget": result.round_diagnostics.get("privacy_budget_used"),
             "test_evaluation": {
                 "aggregate": agg,
-                "per_bank": {bid: asdict(round_report.per_bank[bid]) for bid in BANK_IDS}
-            }
+                "per_bank":  {bid: asdict(round_report.per_bank[bid]) for bid in BANK_IDS},
+            },
+        }
+
+        round_log.append({
+            "round":           round_num,
+            "per_client":      per_client_data,
+            "privacy_budget":  result.round_diagnostics.get("privacy_budget_used"),
+            "test_evaluation": round_event["test_evaluation"],
         })
 
-    # ── Final Evaluation ─────────────────────────────────────────────────
-    print(f"\n{'+'*64}")
-    print(f"  Final Global Model Evaluation (after {args.rounds} rounds)")
-    print(f"{'+'*64}")
+        yield round_event
 
-    # Use the report from the last round
-    report = round_report
-
-    print(f"\n  {'Metric':<25} {'Value':>10}")
-    print(f"  {'-'*37}")
-    for k, v in report.aggregate.items():
-        print(f"  {k:<25} {str(v):>10}")
-
-    # Per-bank table
-    print(f"\n  {'Bank':<10} {'AUC':>7} {'F1':>7} {'FNR':>7} {'FPR':>7} {'Acc':>7} {'Samples':>9}")
-    print(f"  {'-'*57}")
-    for bid in BANK_IDS:
-        r = report.per_bank[bid]
-        print(
-            f"  {bid:<10} {r.auc_roc:>7.4f} {r.f1_score:>7.4f} "
-            f"{r.false_negative_rate:>7.4f} {r.false_positive_rate:>7.4f} "
-            f"{r.accuracy:>7.4f} {r.num_test_samples:>9,}"
-        )
-
-    # ── Save results ─────────────────────────────────────────────────────
+    # ── Final save ───────────────────────────────────────────────────────
     from dataclasses import asdict
+
     output = {
         "method":          args.method,
         "rounds":          args.rounds,
@@ -269,8 +277,11 @@ def run_fl(args: argparse.Namespace) -> None:
         "dp_config":       dp_config,
         "elapsed_seconds": round(time.time() - t_start, 1),
         "round_history":   round_log,
-        "final_aggregate": report.aggregate,
-        "final_per_bank":  {bid: asdict(report.per_bank[bid]) for bid in BANK_IDS},
+        "final_aggregate": round_report.aggregate if round_report else {},
+        "final_per_bank":  (
+            {bid: asdict(round_report.per_bank[bid]) for bid in BANK_IDS}
+            if round_report else {}
+        ),
     }
 
     out_path = REPO_ROOT / "fl_results.json"
@@ -280,6 +291,53 @@ def run_fl(args: argparse.Namespace) -> None:
     print(f"  Results saved to {out_path}")
     print(f"  Total time: {output['elapsed_seconds']:.1f}s")
     print("\n  Done.\n")
+
+    yield {"event": "complete", "output": output}
+
+
+# ---------------------------------------------------------------------------
+# CLI wrapper — consumes the generator, prints as before
+# ---------------------------------------------------------------------------
+
+
+def run_fl(args: argparse.Namespace) -> None:
+    """CLI entry point. Consumes run_fl_gen() and prints progress."""
+    print("\n" + "+" + "="*62 + "+")
+    print("|" + "  Adaptive FL for Bank Fraud Detection".center(62) + "|")
+    print("+" + "="*62 + "+")
+    print(f"  Method:         {args.method}")
+    print(f"  Rounds:         {args.rounds}")
+    print(f"  Local epochs:   {args.local_epochs}")
+    print(f"  FedProx mu:     {args.mu}")
+    if args.method in ("dp_fedavg", "custom"):
+        print(f"  DP clip_norm:   {args.clip_norm}")
+        print(f"  DP noise_mult:  {args.noise_multiplier}")
+    print("\n  Initialising dataloaders and model architecture...")
+
+    for event in run_fl_gen(args):
+        if event["event"] == "complete":
+            output = event["output"]
+            # ── Final summary table ──────────────────────────────────────
+            print(f"\n{'+'*64}")
+            print(f"  Final Global Model Evaluation (after {args.rounds} rounds)")
+            print(f"{'+'*64}")
+            print(f"\n  {'Metric':<25} {'Value':>10}")
+            print(f"  {'-'*37}")
+            for k, v in output["final_aggregate"].items():
+                print(f"  {k:<25} {str(v):>10}")
+            print(
+                f"\n  {'Bank':<10} {'AUC':>7} {'F1':>7} {'FNR':>7} "
+                f"{'FPR':>7} {'Acc':>7} {'Samples':>9}"
+            )
+            print(f"  {'-'*57}")
+            for bid in BANK_IDS:
+                r = output["final_per_bank"][bid]
+                print(
+                    f"  {bid:<10} {r['auc_roc']:>7.4f} {r['f1_score']:>7.4f} "
+                    f"{r['false_negative_rate']:>7.4f} {r['false_positive_rate']:>7.4f} "
+                    f"{r['accuracy']:>7.4f} {r['num_test_samples']:>9,}"
+                )
+        # round events: already printed inside run_fl_gen
 
 
 # ---------------------------------------------------------------------------
